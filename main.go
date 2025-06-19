@@ -2,7 +2,11 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"os"
 	"strings"
 )
@@ -11,6 +15,8 @@ import (
 var cli_cmd map[string]cliCommand
 
 func main() {
+
+	config := &Config{}
 
 	cli_cmd = map[string]cliCommand{
 		"exit": {
@@ -22,6 +28,11 @@ func main() {
 			name:        "help",
 			description: "Show this help message",
 			callback:    commandHelp,
+		},
+		"map": {
+			name:        "map",
+			description: "Shows the list of 20 locations. Repeat the command to see the next 20 locations.",
+			callback:    commandMap,
 		},
 	}
 
@@ -39,7 +50,7 @@ func main() {
 			fmt.Println("Unknown command")
 			continue
 		}
-		cmd.callback()
+		cmd.callback(config)
 
 	}
 
@@ -59,13 +70,13 @@ func cleanInput(text string) []string {
 	return words
 }
 
-func commandExit() error {
+func commandExit(config *Config) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	os.Exit(0)
 	return nil
 }
 
-func commandHelp() error {
+func commandHelp(config *Config) error {
 	fmt.Println("Welcome to the Pokedex!")
 	fmt.Println("Usage:")
 	for _, cmd := range cli_cmd {
@@ -75,8 +86,58 @@ func commandHelp() error {
 	return nil
 }
 
+func commandMap(config *Config) error {
+	var url string
+	if config.nextURL == "" {
+		url = "https://pokeapi.co/api/v2/location-area/"
+	} else {
+		url = config.nextURL
+	}
+
+	res, err := http.Get(url)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	body, err := io.ReadAll(res.Body)
+	res.Body.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+	var PokemonLocation LocationAreaResponse
+	if err := json.Unmarshal(body, &PokemonLocation); err != nil {
+		log.Fatal(err)
+	}
+
+	config.nextURL = PokemonLocation.Next
+	config.previousURL = PokemonLocation.Previous
+
+	for _, locationarea := range PokemonLocation.Results {
+		fmt.Println(locationarea.Name)
+	}
+
+	return nil
+}
+
+type LocationArea struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+type Config struct {
+	nextURL     string
+	previousURL string
+}
+
+type LocationAreaResponse struct {
+	Count    int            `json:"count"`
+	Next     string         `json:"next"`
+	Previous string         `json:"previous"`
+	Results  []LocationArea `json:"results"`
+}
+
 type cliCommand struct {
 	name        string
 	description string
-	callback    func() error
+	callback    func(*Config) error
 }
