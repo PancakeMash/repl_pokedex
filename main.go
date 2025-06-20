@@ -9,12 +9,17 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/PancakeMash/pokedexcli/internal/pokecache"
 )
 
 // Init the cliCommand at the package level so that callback functions can access it.
 var cli_cmd map[string]cliCommand
 
 func main() {
+
+	cache := pokecache.NewCache(10 * time.Second)
 
 	config := &Config{}
 
@@ -55,7 +60,7 @@ func main() {
 			fmt.Println("Unknown command")
 			continue
 		}
-		cmd.callback(config)
+		cmd.callback(config, cache)
 
 	}
 
@@ -75,13 +80,13 @@ func cleanInput(text string) []string {
 	return words
 }
 
-func commandExit(config *Config) error {
+func commandExit(config *Config, cache *pokecache.Cache) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	os.Exit(0)
 	return nil
 }
 
-func commandHelp(config *Config) error {
+func commandHelp(config *Config, cache *pokecache.Cache) error {
 	fmt.Println("Welcome to the Pokedex!")
 	fmt.Println("Usage:")
 	for _, cmd := range cli_cmd {
@@ -91,7 +96,30 @@ func commandHelp(config *Config) error {
 	return nil
 }
 
-func commandMap(config *Config) error {
+func fetchLocationData(url string, cache *pokecache.Cache) ([]byte, error) {
+
+	if cachedData, found := cache.Get(url); found {
+		fmt.Println("Using cached data!")
+		return cachedData, nil
+	}
+
+	res, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+
+	if err != nil {
+		return nil, err
+	}
+
+	cache.Add(url, body)
+	return body, nil
+}
+
+func commandMap(config *Config, cache *pokecache.Cache) error {
 	var url string
 	if config.nextURL == "" {
 		url = "https://pokeapi.co/api/v2/location-area/"
@@ -99,16 +127,11 @@ func commandMap(config *Config) error {
 		url = config.nextURL
 	}
 
-	res, err := http.Get(url)
+	body, err := fetchLocationData(url, cache)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	body, err := io.ReadAll(res.Body)
-	res.Body.Close()
-	if err != nil {
-		log.Fatal(err)
-	}
 	var PokemonLocation LocationAreaResponse
 	if err := json.Unmarshal(body, &PokemonLocation); err != nil {
 		log.Fatal(err)
@@ -124,7 +147,7 @@ func commandMap(config *Config) error {
 	return nil
 }
 
-func commandMapBack(config *Config) error {
+func commandMapBack(config *Config, cache *pokecache.Cache) error {
 	var url string
 	if config.previousURL == "" {
 		fmt.Println("you're on the first page")
@@ -133,16 +156,11 @@ func commandMapBack(config *Config) error {
 		url = config.previousURL
 	}
 
-	res, err := http.Get(url)
+	body, err := fetchLocationData(url, cache)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	body, err := io.ReadAll(res.Body)
-	res.Body.Close()
-	if err != nil {
-		log.Fatal(err)
-	}
 	var PokemonLocation LocationAreaResponse
 	if err := json.Unmarshal(body, &PokemonLocation); err != nil {
 		log.Fatal(err)
@@ -177,5 +195,5 @@ type LocationAreaResponse struct {
 type cliCommand struct {
 	name        string
 	description string
-	callback    func(*Config) error
+	callback    func(*Config, *pokecache.Cache) error
 }
