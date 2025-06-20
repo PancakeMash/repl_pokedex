@@ -34,6 +34,11 @@ func main() {
 			description: "Shows the list of 20 locations. Repeat the command to see the next 20 locations.",
 			callback:    commandMap,
 		},
+		"mapb": {
+			name:        "mapb",
+			description: "Shows the previous 20 locations. Use this to go back in the list of locations.",
+			callback:    commandMapBack,
+		},
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -116,6 +121,39 @@ func commandMap(config *Config) error {
 		fmt.Println(locationarea.Name)
 	}
 
+	return nil
+}
+
+func commandMapBack(config *Config) error {
+	var url string
+	if config.previousURL == "" {
+		fmt.Println("you're on the first page")
+		return nil
+	} else {
+		url = config.previousURL
+	}
+
+	res, err := http.Get(url)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	body, err := io.ReadAll(res.Body)
+	res.Body.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+	var PokemonLocation LocationAreaResponse
+	if err := json.Unmarshal(body, &PokemonLocation); err != nil {
+		log.Fatal(err)
+	}
+
+	config.nextURL = PokemonLocation.Next
+	config.previousURL = PokemonLocation.Previous
+
+	for _, locationarea := range PokemonLocation.Results {
+		fmt.Println(locationarea.Name)
+	}
 	return nil
 }
 
