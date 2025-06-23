@@ -49,13 +49,23 @@ func main() {
 		},
 		"explore": {
 			name:        "explore",
-			description: "Explore a specific location by name. Usage: explore <location_name>",
+			description: "Visit a specific location by name. Usage: explore <location_name>",
 			callback:    commandExplore,
 		},
 		"catch": {
 			name:        "catch",
 			description: "Attempt to catch a Pokemon by name. Usage: catch <pokemon_name>",
 			callback:    commandCatch,
+		},
+		"inspect": {
+			name:        "inspect",
+			description: "Inspect a caught Pokemon by name. Usage: inspect <pokemon_name>",
+			callback:    commandInspect,
+		},
+		"pokedex": {
+			name:        "pokedex",
+			description: "Shows a list of caught Pokemon.",
+			callback:    commandPokedex,
 		},
 	}
 
@@ -237,24 +247,67 @@ func commandCatch(input string, config *Config, cache *pokecache.Cache) error {
 	url := fmt.Sprintf("https://pokeapi.co/api/v2/pokemon/%s", input)
 	fmt.Printf("Throwing a Pokeball at %s...\n", input)
 
+	fmt.Println("Debug: About to fetch data")
 	body, err := fetchLocationData(url, cache)
 	if err != nil {
 		fmt.Printf("Error: %s not found or could not be retrieved.\n", input)
 		return nil
 	}
 
+	fmt.Println("Debug: Data fetched successfully") // Add this
 	var PokemonData Pokemon
+	fmt.Println("Debug: About to unmarshal JSON") // Add this
 	if err := json.Unmarshal(body, &PokemonData); err != nil {
+		fmt.Printf("Debug: JSON unmarshal error: %v\n", err) // Add this
 		return err
 	}
 
-	//Generate random number to determine if catch is successful.
-	successChance := randRange(1, 61)
-	if (PokemonData.BaseEXP / 2) >= successChance {
+	fmt.Printf("Debug: %s BaseEXP=%d\n", PokemonData.Name, PokemonData.BaseEXP)
+
+	randRange := randRange(1, 170)
+	if randRange >= PokemonData.BaseEXP/2 {
 		caught_pkm[PokemonData.Name] = PokemonData
-		fmt.Printf("%s was caught!\n", input)
+		fmt.Printf("Caught %s!\n", PokemonData.Name)
 	} else {
-		fmt.Printf("%s escaped!\n", input)
+		fmt.Printf("%s escaped!\n", PokemonData.Name)
+	}
+
+	return nil
+}
+
+func commandInspect(input string, config *Config, cache *pokecache.Cache) error {
+	if input == "" {
+		fmt.Println("Please provide a Pokemon name to inspect.")
+		return nil
+	}
+
+	if pokemon, found := caught_pkm[input]; found {
+		fmt.Printf("Name: %s \n", pokemon.Name)
+		fmt.Printf("Height: %d\n", pokemon.Height)
+		fmt.Printf("Weight: %d\n", pokemon.Weight)
+		fmt.Println("Stats:")
+		for _, stat := range pokemon.Stats {
+			fmt.Printf("  %s: %d\n", stat.Stat.Name, stat.BaseStat)
+		}
+		fmt.Println("Types:")
+		for _, typeInfo := range pokemon.Types {
+			fmt.Printf("  - %s\n", typeInfo.Type.Name)
+		}
+	} else {
+		fmt.Println("You have not caught that Pokemon yet.")
+	}
+
+	return nil
+}
+
+func commandPokedex(input string, config *Config, cache *pokecache.Cache) error {
+	if len(caught_pkm) == 0 {
+		fmt.Println("You haven't caught any Pokemon yet.")
+		return nil
+	}
+	fmt.Println("Your Pokedex:")
+	for _, pokemon := range caught_pkm {
+		fmt.Printf("  - %s\n", pokemon.Name)
 	}
 
 	return nil
@@ -268,6 +321,19 @@ type LocationArea struct {
 type Pokemon struct {
 	Name    string `json:"name"`
 	BaseEXP int    `json:"base_experience"`
+	Height  int    `json:"height"`
+	Weight  int    `json:"weight"`
+	Stats   []struct {
+		BaseStat int `json:"base_stat"`
+		Stat     struct {
+			Name string `json:"name"`
+		} `json:"stat"`
+	} `json:"stats"`
+	Types []struct {
+		Type struct {
+			Name string `json:"name"`
+		} `json:"type"`
+	} `json:"types"`
 }
 
 type Encounter struct {
