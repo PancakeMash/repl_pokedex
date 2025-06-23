@@ -44,6 +44,11 @@ func main() {
 			description: "Shows the previous 20 locations. Use this to go back in the list of locations.",
 			callback:    commandMapBack,
 		},
+		"explore": {
+			name:        "explore",
+			description: "Explore a specific location by name. Usage: explore <location_name>",
+			callback:    commandExplore,
+		},
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -60,7 +65,13 @@ func main() {
 			fmt.Println("Unknown command")
 			continue
 		}
-		cmd.callback(config, cache)
+
+		name := ""
+		if len(input) == 2 && first_word == "explore" {
+			name = input[1]
+		}
+
+		cmd.callback(name, config, cache)
 
 	}
 
@@ -80,13 +91,13 @@ func cleanInput(text string) []string {
 	return words
 }
 
-func commandExit(config *Config, cache *pokecache.Cache) error {
+func commandExit(input string, config *Config, cache *pokecache.Cache) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	os.Exit(0)
 	return nil
 }
 
-func commandHelp(config *Config, cache *pokecache.Cache) error {
+func commandHelp(input string, config *Config, cache *pokecache.Cache) error {
 	fmt.Println("Welcome to the Pokedex!")
 	fmt.Println("Usage:")
 	for _, cmd := range cli_cmd {
@@ -119,7 +130,7 @@ func fetchLocationData(url string, cache *pokecache.Cache) ([]byte, error) {
 	return body, nil
 }
 
-func commandMap(config *Config, cache *pokecache.Cache) error {
+func commandMap(input string, config *Config, cache *pokecache.Cache) error {
 	var url string
 	if config.nextURL == "" {
 		url = "https://pokeapi.co/api/v2/location-area/"
@@ -147,7 +158,7 @@ func commandMap(config *Config, cache *pokecache.Cache) error {
 	return nil
 }
 
-func commandMapBack(config *Config, cache *pokecache.Cache) error {
+func commandMapBack(input string, config *Config, cache *pokecache.Cache) error {
 	var url string
 	if config.previousURL == "" {
 		fmt.Println("you're on the first page")
@@ -175,9 +186,44 @@ func commandMapBack(config *Config, cache *pokecache.Cache) error {
 	return nil
 }
 
+func commandExplore(input string, config *Config, cache *pokecache.Cache) error {
+	if input == "" {
+		fmt.Println("Please provide a location name to explore.")
+		return nil
+	}
+
+	fmt.Printf("Exploring %s ...\n", input)
+	url := fmt.Sprintf("https://pokeapi.co/api/v2/location-area/%s", input)
+
+	body, err := fetchLocationData(url, cache)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var EncounterData Encounter
+	if err := json.Unmarshal(body, &EncounterData); err != nil {
+		log.Fatal(err)
+	}
+
+	//Display the Pokemon found in the location
+	for _, encounter := range EncounterData.PokemonEncounters {
+		fmt.Println(encounter.Pokemon.Name)
+	}
+
+	return nil
+}
+
 type LocationArea struct {
 	Name string `json:"name"`
 	URL  string `json:"url"`
+}
+
+type Encounter struct {
+	PokemonEncounters []struct {
+		Pokemon struct {
+			Name string `json:"name"`
+		} `json:"pokemon"`
+	} `json:"pokemon_encounters"`
 }
 
 type Config struct {
@@ -195,5 +241,5 @@ type LocationAreaResponse struct {
 type cliCommand struct {
 	name        string
 	description string
-	callback    func(*Config, *pokecache.Cache) error
+	callback    func(string, *Config, *pokecache.Cache) error
 }
